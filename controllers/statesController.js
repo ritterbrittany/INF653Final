@@ -7,7 +7,6 @@ const getStateData = (code) => {
 
 const getAllStates = async (req, res) => {
   const { contig } = req.query;
-
   let states = [...statesData];
 
   if (contig === 'true') {
@@ -76,8 +75,9 @@ const getAdmissionDate = (req, res) => {
 const getFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const dbEntry = await State.findOne({ stateCode: code });
+  const state = getStateData(code);
   if (!dbEntry || dbEntry.funfacts.length === 0) {
-    return res.status(404).json({ message: `No Fun Facts found for ${code}` });
+    return res.status(404).json({ message: `No Fun Facts found for ${state?.state || code}` });
   }
 
   const randomIndex = Math.floor(Math.random() * dbEntry.funfacts.length);
@@ -107,18 +107,28 @@ const createFunFact = async (req, res) => {
 const updateFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const { index, funfact } = req.body;
+  const stateData = getStateData(code);
 
-  if (index === undefined || !funfact) {
-    return res.status(400).json({ message: 'State fun fact value and index are required' });
+  if (!stateData) {
+    return res.status(404).json({ message: 'Invalid state abbreviation parameter' });
+  }
+
+  if (index === undefined) {
+    return res.status(400).json({ message: 'State fun fact index value required' });
+  }
+
+  if (!funfact || typeof funfact !== 'string') {
+    return res.status(400).json({ message: 'State fun fact value required' });
   }
 
   const state = await State.findOne({ stateCode: code });
-  if (!state || !state.funfacts.length) {
-    return res.status(404).json({ message: `No Fun Facts found for ${code}` });
+
+  if (!state || !state.funfacts || state.funfacts.length === 0) {
+    return res.status(404).json({ message: `No Fun Facts found for ${stateData.state}` });
   }
 
   if (index < 1 || index > state.funfacts.length) {
-    return res.status(400).json({ message: 'Invalid index' });
+    return res.status(404).json({ message: `No Fun Fact found at that index for ${stateData.state}` });
   }
 
   state.funfacts[index - 1] = funfact;
@@ -129,14 +139,24 @@ const updateFunFact = async (req, res) => {
 const deleteFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const { index } = req.body;
+  const stateData = getStateData(code);
+
+  if (!stateData) {
+    return res.status(404).json({ message: 'Invalid state abbreviation parameter' });
+  }
+
+  if (index === undefined) {
+    return res.status(400).json({ message: 'State fun fact index value required' });
+  }
 
   const state = await State.findOne({ stateCode: code });
-  if (!state || !state.funfacts.length) {
-    return res.status(404).json({ message: `No Fun Facts found for ${code}` });
+
+  if (!state || !state.funfacts || state.funfacts.length === 0) {
+    return res.status(404).json({ message: `No Fun Facts found for ${stateData.state}` });
   }
 
   if (index < 1 || index > state.funfacts.length) {
-    return res.status(400).json({ message: 'Invalid index' });
+    return res.status(404).json({ message: `No Fun Fact found at that index for ${stateData.state}` });
   }
 
   state.funfacts.splice(index - 1, 1);

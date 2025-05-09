@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const path = require('path');
 const stateRoutes = require('./routes/states');
 
 dotenv.config();  // Load environment variables
@@ -11,6 +12,14 @@ const cors = require('cors');
 app.use(cors());
 
 app.use(express.json());  // For parsing JSON bodies
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+
+
+
 app.use('/states', stateRoutes);  // Use the state routes
 
 // Connect to MongoDB
@@ -29,6 +38,9 @@ app.use((req, res) => {
   } else if (req.accepts('json')) {
     res.status(404).json({ error: '404 Not Found' });
   }
+});
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, '404.html'));
 });
 
 // Start the server
