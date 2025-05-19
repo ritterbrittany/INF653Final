@@ -1,42 +1,50 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
-const cors = require('cors');
 const stateRoutes = require('./routes/states');
-const connectDB = require('./config/dbConn');
 
-dotenv.config();
+dotenv.config();  // Load environment variables
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Middleware
+const cors = require('cors');
 app.use(cors());
-app.use(express.json());
 
-// Routes
+app.use(express.json());  // For parsing JSON bodies
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
-app.use('/states', stateRoutes);
 
-// 404 handler
+
+
+
+app.use('/states', stateRoutes);  // Use the state routes
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => {
+    console.log('Connected to MongoDB');
+  })
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+  });
+
+// Catch-all for 404
 app.use((req, res) => {
   if (req.accepts('html')) {
     res.status(404).send('<h1>404 Not Found</h1>');
   } else if (req.accepts('json')) {
     res.status(404).json({ error: '404 Not Found' });
-  } else {
-    res.status(404).type('txt').send('404 Not Found');
   }
 });
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, '404.html'));
+});
 
-// Connect to MongoDB and then start server
-connectDB()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error('Failed to connect to MongoDB. Server not started.', err);
-  });
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
