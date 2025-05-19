@@ -6,25 +6,36 @@ const getStateData = (code) => {
 };
 
 const getAllStates = async (req, res) => {
-  const { contig } = req.query;
-  let states = [...statesData];
+  try {
+    const { contig } = req.query;
+    let states = [...statesData];
 
-  if (contig === 'true') {
-    states = states.filter(state => state.code !== 'AK' && state.code !== 'HI');
-  } else if (contig === 'false') {
-    states = states.filter(state => state.code === 'AK' || state.code === 'HI');
-  }
-
-  const dbStates = await State.find();
-  const merged = states.map(state => {
-    const match = dbStates.find(db => db.stateCode === state.code);
-    if (match && match.funfacts.length > 0) {
-      return { ...state, funfacts: match.funfacts };
+    if (contig === 'true') {
+      states = states.filter(state => state.code !== 'AK' && state.code !== 'HI');
+    } else if (contig === 'false') {
+      states = states.filter(state => state.code === 'AK' || state.code === 'HI');
     }
-    return state;
-  });
 
-  res.json(merged);
+    // Fetch funfacts from MongoDB once and use lean for performance
+    const dbStates = await State.find().lean();
+
+    // Create a map for quick lookup of funfacts by stateCode
+    const funfactsMap = new Map(dbStates.map(db => [db.stateCode, db.funfacts]));
+
+    // Merge static state data with funfacts if present
+    const merged = states.map(state => {
+      const funfacts = funfactsMap.get(state.code);
+      if (funfacts && funfacts.length > 0) {
+        return { ...state, funfacts };
+      }
+      return state;
+    });
+
+    res.json(merged);
+  } catch (error) {
+    console.error('Error in getAllStates:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 };
 
 const getState = async (req, res) => {
@@ -174,5 +185,4 @@ module.exports = {
   getFunFact,
   createFunFact,
   updateFunFact,
-  deleteFunFact
 };
