@@ -1,7 +1,7 @@
 const State = require('../models/states');
 const statesData = require('../models/statesData.json');
 
-// Helper: Find state from JSON data by state code (case-insensitive)
+// Normalize state codes to uppercase consistently
 const getStateData = (code) => {
   return statesData.find(state => state.code.toUpperCase() === code.toUpperCase());
 };
@@ -12,26 +12,23 @@ const getAllStates = async (req, res) => {
     const { contig } = req.query;
     let filteredStates = [...statesData];
 
-    // Filter based on contig param
     if (contig === 'true') {
       filteredStates = filteredStates.filter(state => state.code !== 'AK' && state.code !== 'HI');
     } else if (contig === 'false') {
       filteredStates = filteredStates.filter(state => state.code === 'AK' || state.code === 'HI');
     }
 
-    // Get all fun facts from DB at once
+    // Load all fun facts from DB and map by uppercase stateCode
     const dbStates = await State.find().lean();
-
-    // Create a map for quick lookup: stateCode => funfacts array
     const funfactsMap = new Map(dbStates.map(dbState => [dbState.stateCode.toUpperCase(), dbState.funfacts]));
 
-    // Merge funfacts into statesData if they exist
+    // Merge funfacts carefully and ensure no mutation of original state object
     const mergedStates = filteredStates.map(state => {
       const funfacts = funfactsMap.get(state.code.toUpperCase());
       if (funfacts && funfacts.length > 0) {
         return { ...state, funfacts };
       }
-      return state;
+      return { ...state };
     });
 
     res.json(mergedStates);
@@ -41,7 +38,7 @@ const getAllStates = async (req, res) => {
   }
 };
 
-// GET /states/:state (e.g., /states/KS)
+// GET /states/:state
 const getState = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const state = getStateData(code);
@@ -49,18 +46,23 @@ const getState = async (req, res) => {
 
   try {
     const dbEntry = await State.findOne({ stateCode: code });
-    const responseState = { ...state };
+    // Clone original state object so we don't mutate original data
+    const stateWithFunfacts = { ...state };
+
     if (dbEntry && dbEntry.funfacts && dbEntry.funfacts.length > 0) {
-      responseState.funfacts = dbEntry.funfacts;
+      stateWithFunfacts.funfacts = dbEntry.funfacts;
     }
-    res.json(responseState);
+
+    res.json(stateWithFunfacts);
   } catch (error) {
     console.error('Error fetching state:', error);
     res.status(500).json({ message: 'Server error fetching state' });
   }
 };
 
-// GET /states/:state/capital
+// The rest of your GET endpoints for capital, nickname, population, admission date
+// Just ensure you don't mutate the state object and always handle missing state
+
 const getCapital = (req, res) => {
   const code = req.params.state.toUpperCase();
   const state = getStateData(code);
@@ -68,7 +70,6 @@ const getCapital = (req, res) => {
   res.json({ state: state.state, capital: state.capital });
 };
 
-// GET /states/:state/nickname
 const getNickname = (req, res) => {
   const code = req.params.state.toUpperCase();
   const state = getStateData(code);
@@ -76,18 +77,13 @@ const getNickname = (req, res) => {
   res.json({ state: state.state, nickname: state.nickname });
 };
 
-// GET /states/:state/population
 const getPopulation = (req, res) => {
   const code = req.params.state.toUpperCase();
   const state = getStateData(code);
   if (!state) return res.status(404).json({ message: 'Invalid state abbreviation parameter' });
-
-  // population as string with commas
-  const populationStr = state.population.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  res.json({ state: state.state, population: populationStr });
+  res.json({ state: state.state, population: state.population.toLocaleString() });
 };
 
-// GET /states/:state/admission
 const getAdmissionDate = (req, res) => {
   const code = req.params.state.toUpperCase();
   const state = getStateData(code);
@@ -95,16 +91,15 @@ const getAdmissionDate = (req, res) => {
   res.json({ state: state.state, admitted: state.admission_date });
 };
 
-// GET /states/:state/funfact (returns a random fun fact)
+// Fun fact endpoints - create, update, delete same logic with uppercase normalization
+
 const getFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
-  const state = getStateData(code);
-  if (!state) return res.status(404).json({ message: 'Invalid state abbreviation parameter' });
-
   try {
     const dbEntry = await State.findOne({ stateCode: code });
+    const state = getStateData(code);
     if (!dbEntry || !dbEntry.funfacts || dbEntry.funfacts.length === 0) {
-      return res.status(404).json({ message: `No Fun Facts found for ${state.state}` });
+      return res.status(404).json({ message: `No Fun Facts found for ${state?.state || code}` });
     }
     const randomIndex = Math.floor(Math.random() * dbEntry.funfacts.length);
     res.json({ funfact: dbEntry.funfacts[randomIndex] });
@@ -114,17 +109,12 @@ const getFunFact = async (req, res) => {
   }
 };
 
-// POST /states/:state/funfact (add new fun facts)
 const createFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const { funfacts } = req.body;
 
-  if (!funfacts) {
-    return res.status(400).json({ message: 'State fun facts value required' });
-  }
-
-  if (!Array.isArray(funfacts)) {
-    return res.status(400).json({ message: 'State fun facts value must be an array' });
+  if (!funfacts || !Array.isArray(funfacts)) {
+    return res.status(400).json({ message: 'State fun facts value must be an array of strings' });
   }
 
   try {
@@ -142,7 +132,6 @@ const createFunFact = async (req, res) => {
   }
 };
 
-// PATCH /states/:state/funfact (update a fun fact by index)
 const updateFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const { index, funfact } = req.body;
@@ -176,7 +165,6 @@ const updateFunFact = async (req, res) => {
   }
 };
 
-// DELETE /states/:state/funfact (delete a fun fact by index)
 const deleteFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const { index } = req.body;
