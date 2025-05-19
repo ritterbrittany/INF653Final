@@ -23,11 +23,11 @@ const getAllStates = async (req, res) => {
     const dbStates = await State.find().lean();
 
     // Create a map for quick lookup: stateCode => funfacts array
-    const funfactsMap = new Map(dbStates.map(dbState => [dbState.stateCode, dbState.funfacts]));
+    const funfactsMap = new Map(dbStates.map(dbState => [dbState.stateCode.toUpperCase(), dbState.funfacts]));
 
     // Merge funfacts into statesData if they exist
     const mergedStates = filteredStates.map(state => {
-      const funfacts = funfactsMap.get(state.code);
+      const funfacts = funfactsMap.get(state.code.toUpperCase());
       if (funfacts && funfacts.length > 0) {
         return { ...state, funfacts };
       }
@@ -49,10 +49,11 @@ const getState = async (req, res) => {
 
   try {
     const dbEntry = await State.findOne({ stateCode: code });
+    const responseState = { ...state };
     if (dbEntry && dbEntry.funfacts && dbEntry.funfacts.length > 0) {
-      state.funfacts = dbEntry.funfacts;
+      responseState.funfacts = dbEntry.funfacts;
     }
-    res.json(state);
+    res.json(responseState);
   } catch (error) {
     console.error('Error fetching state:', error);
     res.status(500).json({ message: 'Server error fetching state' });
@@ -80,7 +81,10 @@ const getPopulation = (req, res) => {
   const code = req.params.state.toUpperCase();
   const state = getStateData(code);
   if (!state) return res.status(404).json({ message: 'Invalid state abbreviation parameter' });
-  res.json({ state: state.state, population: state.population.toLocaleString() });
+
+  // population as string with commas
+  const populationStr = state.population.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  res.json({ state: state.state, population: populationStr });
 };
 
 // GET /states/:state/admission
@@ -94,11 +98,13 @@ const getAdmissionDate = (req, res) => {
 // GET /states/:state/funfact (returns a random fun fact)
 const getFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
+  const state = getStateData(code);
+  if (!state) return res.status(404).json({ message: 'Invalid state abbreviation parameter' });
+
   try {
     const dbEntry = await State.findOne({ stateCode: code });
-    const state = getStateData(code);
     if (!dbEntry || !dbEntry.funfacts || dbEntry.funfacts.length === 0) {
-      return res.status(404).json({ message: `No Fun Facts found for ${state?.state || code}` });
+      return res.status(404).json({ message: `No Fun Facts found for ${state.state}` });
     }
     const randomIndex = Math.floor(Math.random() * dbEntry.funfacts.length);
     res.json({ funfact: dbEntry.funfacts[randomIndex] });
@@ -113,8 +119,12 @@ const createFunFact = async (req, res) => {
   const code = req.params.state.toUpperCase();
   const { funfacts } = req.body;
 
-  if (!funfacts || !Array.isArray(funfacts)) {
-    return res.status(400).json({ message: 'State fun facts value must be an array of strings' });
+  if (!funfacts) {
+    return res.status(400).json({ message: 'State fun facts value required' });
+  }
+
+  if (!Array.isArray(funfacts)) {
+    return res.status(400).json({ message: 'State fun facts value must be an array' });
   }
 
   try {
